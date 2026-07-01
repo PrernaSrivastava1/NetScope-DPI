@@ -624,6 +624,45 @@ export default function Dashboard() {
                 )}
               </div>
 
+              {/* Core Features & Value Proposal */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-12 w-full text-left">
+                <div className="bg-[#0b0e14]/40 border border-slate-900/60 p-5 rounded-2xl relative overflow-hidden group shadow-lg shadow-black/5 before:absolute before:top-0 before:left-0 before:w-full before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/20 before:to-transparent">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-cyan-400" /> Parallel Flow Balancing
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
+                    Uses consistent hashing on packet IP/port tuples to dispatch frames to dedicated queues, solving multi-threaded ordering issues.
+                  </p>
+                </div>
+
+                <div className="bg-[#0b0e14]/40 border border-slate-900/60 p-5 rounded-2xl relative overflow-hidden group shadow-lg shadow-black/5 before:absolute before:top-0 before:left-0 before:w-full before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/20 before:to-transparent">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                    <Network className="w-4 h-4 text-cyan-400" /> Deep Traffic Profiling
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
+                    Mines client handshakes to extract TLS Server Name Indications (SNI), DNS lookups, and HTTP headers for instant app identification.
+                  </p>
+                </div>
+
+                <div className="bg-[#0b0e14]/40 border border-slate-900/60 p-5 rounded-2xl relative overflow-hidden group shadow-lg shadow-black/5 before:absolute before:top-0 before:left-0 before:w-full before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/20 before:to-transparent">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-cyan-400" /> Firewall Rule Simulator
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
+                    Apply live block rules for specific IPs, domains, or app signatures to simulate drop profiles without changing code.
+                  </p>
+                </div>
+
+                <div className="bg-[#0b0e14]/40 border border-slate-900/60 p-5 rounded-2xl relative overflow-hidden group shadow-lg shadow-black/5 before:absolute before:top-0 before:left-0 before:w-full before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/20 before:to-transparent">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                    <Database className="w-4 h-4 text-cyan-400" /> Topological Graphs
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
+                    Transforms raw packets into an interactive, force-directed node map. Inspect device bandwidth, connection counts, and protocols.
+                  </p>
+                </div>
+              </div>
+
               {error && (
                 <div className="mt-8 p-4 rounded-2xl bg-rose-950/10 border border-rose-800/20 flex items-start gap-3 text-left">
                   <XCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
