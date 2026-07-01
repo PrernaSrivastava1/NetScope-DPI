@@ -6,7 +6,7 @@ DPI Net-Scope is an enterprise-grade network analysis suite that combines a low-
 
 ---
 
-## 2. Why This Project Exists
+## Why This Project Exists
 
 Analyzing raw network captures (PCAP) usually requires heavy desktop tools like Wireshark or command-line utilities like `tcpdump`/`tshark`. While powerful, these tools pose distinct challenges:
 - **Low Accessibility**: Sharing analysis results requires sending raw files or screenshots. Non-technical stakeholders cannot easily interact with the data.
@@ -17,7 +17,7 @@ Analyzing raw network captures (PCAP) usually requires heavy desktop tools like 
 
 ---
 
-## 3. Key Features
+## Key Features
 
 ### Current Features
 - **Multi-Threaded Hashing & Load Balancing**: Dispatches packets to parallel Fast Path (FP) processing threads using a consistent 5-tuple hash to guarantee connection flow continuity.
@@ -35,7 +35,7 @@ Analyzing raw network captures (PCAP) usually requires heavy desktop tools like 
 
 ---
 
-## 4. Screenshots
+## Screenshots
 
 *(Screenshots will be added upon deployment. Below are details of what each dashboard view visualizes)*
 
@@ -53,7 +53,7 @@ Analyzing raw network captures (PCAP) usually requires heavy desktop tools like 
 
 ---
 
-## 5. Architecture
+## Architecture
 
 ```mermaid
 graph TD
@@ -100,7 +100,7 @@ graph TD
 
 ---
 
-## 6. Project Workflow
+## Project Workflow
 
 ```
 [ User Selects PCAP ]
@@ -136,7 +136,7 @@ graph TD
 
 ---
 
-## 7. Folder Structure
+## Folder Structure
 
 ```
 Packet_analyzer/
@@ -167,7 +167,7 @@ Packet_analyzer/
 
 ---
 
-## 8. Technology Stack
+## Technology Stack
 
 | Layer | Technology | Details |
 | :--- | :--- | :--- |
@@ -183,7 +183,7 @@ Packet_analyzer/
 
 ---
 
-## 9. Installation
+## Installation
 
 ### Prerequisites
 - **Java Development Kit (JDK)** version 21 or higher.
@@ -215,11 +215,11 @@ Open `http://localhost:3000` in your web browser.
 
 ---
 
-## 10. Usage
+## Usage
 
 ### Analyzing a PCAP
 1. Open `http://localhost:3000` in your browser.
-2. Under the **Upload Center**, click "Choose PCAP File" and select a Wireshark capture (e.g. [test_dpi.pcap](file:///c:/Users/HP/PA-NET-SCOPE/Packet_analyzer/test_dpi.pcap)).
+2. Under the **Upload Center**, click "Choose PCAP File" and select a Wireshark capture (e.g. [test_dpi.pcap](file:///c:/Users/HP/PA-NET-SCOPE/Packet_analyzer/samples/test_dpi.pcap)).
 3. Click **Start DPI Inspection**. The upload progress bar tracks the file transfer.
 4. Once completed, the app transitions automatically to the **Overview Dashboard**.
 
@@ -231,7 +231,7 @@ Open `http://localhost:3000` in your web browser.
 
 ---
 
-## 11. API Documentation
+## API Documentation
 
 ### 1. Analyze PCAP
 * **Endpoint**: `POST /api/analyze`
@@ -282,28 +282,28 @@ Open `http://localhost:3000` in your web browser.
 
 ---
 
-## 12. Project Highlights
+## Project Highlights
 
 - **Parallel Pipeline Hashing**: Uses consistent Murmur-like hashing of packet source and destination IPs to assign packet jobs to specific queue buckets. This prevents flow fragmentation, ensuring a connection's packets are always processed sequentially by the same worker thread.
 - **Simulated Filtering pass**: Rather than altering the core packet streams, the Spring Boot wrapper simulates a secondary inspection pass utilizing the core `RuleManager` and thread connection states. This keeps the core multi-threaded analyzer clean of serialization overhead.
 
 ---
 
-## 13. Challenges Faced
+## Challenges Faced
 
 * **State Synchronization Across Worker Threads**: Dispatched TCP handshake flows can trigger state changes (e.g., transitioning from `NEW` to `ESTABLISHED`). Ensuring these states are updated safely across multiple processor queues without heavy mutex locks was resolved using localized thread-safe hashes (`ConcurrentHashMap` inside thread-specific `ConnectionTracker` scopes).
 * **Endianness Alignment**: Network packet values (like IP addresses and ports) are transmitted in Big-Endian format. However, standard x86 memory is Little-Endian. The Java codebase reads PCAP packet headers dynamically adjusting endian swaps based on the magic header bytes (`0xd4c3b2a1` or `0xa1b2c3d4`).
 
 ---
 
-## 14. Lessons Learned
+## Lessons Learned
 
 - **Decoupled Architecture**: Keeping the networking core separate from Spring Boot simplifies unit testing. The core engine is testable via direct local files, and the Spring Boot controller acts merely as a controller routing parameters and mapping responses.
 - **React Rendering Performance**: Rendering thousands of raw packets in a single table degrades browser rendering speeds. Implementing client-side table slicing (`slice(0, 100)`) combined with search query filtering maintains a lightweight DOM footprint.
 
 ---
 
-## 15. Performance
+## Performance
 
 The multi-threaded DPI Core Engine scales linearly with CPU cores. In local testing with 4 Fast Path processing threads:
 - **Small Captures (under 10MB)**: Processed in under **50 milliseconds**.
@@ -312,14 +312,14 @@ The multi-threaded DPI Core Engine scales linearly with CPU cores. In local test
 
 ---
 
-## 16. Security Considerations
+## Security Considerations
 
 - **Strict Header Bounds checking**: Custom parser algorithms parse offsets directly from packet byte arrays. To prevent buffer overflow/out-of-bounds exceptions, all offsets are checked against the actual packet length (`job.getData().length`) before memory reads.
 - **Thread Queue Bound limits**: To prevent memory exhaust (OOM) on huge PCAP files, load balancer input queues are bounded arrays (`ArrayBlockingQueue` with a capacity of `10000`). If processors are saturated, the reader thread yields automatically.
 
 ---
 
-## 17. Deployment
+## Deployment
 
 ### Backend (Railway / Render / AWS)
 1. Package the Spring Boot application into a standalone runnable JAR:
@@ -338,40 +338,19 @@ The multi-threaded DPI Core Engine scales linearly with CPU cores. In local test
 
 ---
 
-## 18. Roadmap
-
-- [x] Convert core DPI engines and trackers from C++ to Java 21.
-- [x] Create Spring Boot REST API controller and endpoints.
-- [x] Construct Next.js frontend with Lucide icons and Tailwind.
-- [x] Implement interactive HTML5 topology canvas graphs.
-- [ ] Add live network interface card streaming capabilities (Planned).
-- [ ] Support custom regex intrusion signatures (Planned).
-
----
-
-## 19. Contributing
-
-Contributions are welcome! Please follow these steps:
-1. Fork this repository.
-2. Create a feature branch (`git checkout -b feature/NewFeature`).
-3. Make sure unit tests pass (`mvn test`).
-4. Commit your changes and open a Pull Request.
-
----
-
-## 20. License
+## License
 
 This project is licensed under the MIT License. See `LICENSE` for details.
 
 ---
 
-## 21. Acknowledgements
+## Acknowledgements
 
 - Inspired by classic deep packet inspection abstractions and flow balancer structures found in standard Linux kernel modules and DPDK fast-path packet tracker pipelines.
 
 ---
 
-## 22. Author
+## Author
 
 **Prerna Srivastava**
 - **GitHub**: [github.com/PrernaSrivastava1](https://github.com/PrernaSrivastava1)
@@ -380,7 +359,7 @@ This project is licensed under the MIT License. See `LICENSE` for details.
 
 ---
 
-## 23. Release Checklist
+## Release Checklist
 
 Use this checklist to verify production readiness prior to tagging a new release:
 
@@ -391,4 +370,3 @@ Use this checklist to verify production readiness prior to tagging a new release
 - [x] **Clean Repository State**: No temporary outputs, `.pcap` uploads, or compiler `.class` artifacts checked in.
 - [x] **No hardcoded credentials**: Checked configurations for API keys, passwords, or credentials.
 - [x] **Cross-platform building**: The project compiles out-of-the-box from a fresh repository clone.
-
