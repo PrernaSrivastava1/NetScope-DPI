@@ -83,6 +83,66 @@ public class DPIController {
         }
     }
 
+    @PostMapping("/analyze/sample")
+    public ResponseEntity<?> analyzeSample() {
+        File tempInput = null;
+        File tempOutput = null;
+        try {
+            InputStream is = getClass().getClassLoader().getResourceAsStream("test_dpi.pcap");
+            if (is == null) {
+                File fallbackFile = new File("samples/test_dpi.pcap");
+                if (fallbackFile.exists()) {
+                    is = new FileInputStream(fallbackFile);
+                } else {
+                    return ResponseEntity.status(404).body("Sample test_dpi.pcap not found in resources or local folder");
+                }
+            }
+
+            tempInput = File.createTempFile("sample-", ".pcap");
+            try (OutputStream os = new FileOutputStream(tempInput)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = is.read(buffer)) != -1) {
+                    os.write(buffer, 0, bytesRead);
+                }
+            }
+
+            tempOutput = File.createTempFile("filtered-", ".pcap");
+
+            // Initialize and configure DPIEngine
+            DPIEngineConfig config = new DPIEngineConfig();
+            config.numLoadBalancers = 2;
+            config.fpsPerLb = 2;
+            
+            DPIEngine engine = new DPIEngine(config);
+            engine.initialize();
+
+            // Apply active blocking rules
+            for (String ip : blockedIps) engine.blockIP(ip);
+            for (String app : blockedApps) engine.blockApp(app);
+            for (String domain : blockedDomains) engine.blockDomain(domain);
+
+            // Process the PCAP file through the core engine
+            boolean success = engine.processFile(tempInput.getAbsolutePath(), tempOutput.getAbsolutePath());
+            if (!success) {
+                return ResponseEntity.status(500).body("DPI Engine failed to process the sample file");
+            }
+
+            // Parse detailed packet details, flows, and graphs from the processed file
+            AnalysisResponse response = generateAnalysisResponse(tempInput.getAbsolutePath(), engine);
+            lastAnalysis = response;
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Error analyzing sample PCAP: " + e.getMessage());
+        } finally {
+            if (tempInput != null && tempInput.exists()) tempInput.delete();
+            if (tempOutput != null && tempOutput.exists()) tempOutput.delete();
+        }
+    }
+
     @GetMapping("/rules")
     public ResponseEntity<?> getRules() {
         Map<String, List<String>> rules = new HashMap<>();

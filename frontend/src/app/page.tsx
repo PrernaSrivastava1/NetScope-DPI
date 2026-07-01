@@ -239,6 +239,53 @@ export default function Dashboard() {
     xhr.send(formData);
   };
 
+  const triggerSampleAnalysis = () => {
+    setUploading(true);
+    setProgress(20);
+    setError(null);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "http://localhost:8080/api/analyze/sample");
+
+    // Mock progress loading updates for static sample
+    const timer = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 90) {
+          clearInterval(timer);
+          return 90;
+        }
+        return prev + 15;
+      });
+    }, 150);
+
+    xhr.onload = () => {
+      clearInterval(timer);
+      setProgress(100);
+      setTimeout(() => {
+        setUploading(false);
+        if (xhr.status === 200) {
+          try {
+            const result = JSON.parse(xhr.responseText) as AnalysisResponse;
+            setAnalysis(result);
+            setActiveTab("overview");
+          } catch (e) {
+            setError("Failed to parse sample analysis response from backend.");
+          }
+        } else {
+          setError(xhr.responseText || "An error occurred during sample analysis.");
+        }
+      }, 200);
+    };
+
+    xhr.onerror = () => {
+      clearInterval(timer);
+      setUploading(false);
+      setError("Network error connecting to the Spring Boot backend.");
+    };
+
+    xhr.send();
+  };
+
   // Canvas Force-Directed Network Graph
   useEffect(() => {
     if (activeTab !== "graph" || !analysis || !canvasRef.current) return;
@@ -549,6 +596,15 @@ export default function Dashboard() {
                     className="mt-8 w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-500 hover:from-cyan-300 hover:to-indigo-400 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-400/25 active:scale-95 transition-all duration-300"
                   >
                     Start DPI Inspection
+                  </button>
+                )}
+
+                {!file && !uploading && (
+                  <button 
+                    onClick={triggerSampleAnalysis}
+                    className="mt-8 px-6 py-2.5 rounded-xl border border-slate-800 hover:border-slate-700 hover:bg-slate-900/10 text-cyan-400 font-bold text-xs uppercase tracking-wider transition-colors active:scale-95 flex items-center gap-1.5"
+                  >
+                    Or Load Sample PCAP
                   </button>
                 )}
 
