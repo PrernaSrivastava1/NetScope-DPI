@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
   Upload, Activity, Network, Shield, ShieldAlert, Database, 
   Search, ArrowUpDown, ChevronDown, ChevronUp, Download, 
-  FileJson, FileSpreadsheet, FileCode, CheckCircle, RefreshCw, XCircle, Info, Sparkles
+  FileJson, FileSpreadsheet, FileCode, CheckCircle, RefreshCw, XCircle, Info, Sparkles, Cpu
 } from "lucide-react";
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, 
@@ -112,18 +112,21 @@ interface AnalysisResponse {
 const COLORS = ["#00f0ff", "#10b981", "#fbbf24", "#f43f5e", "#8b5cf6", "#3b82f6", "#ec4899", "#14b8a6"];
 
 export default function Dashboard() {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "packets" | "flows" | "graph" | "rules" | "export">("overview");
+  const [docTab, setDocTab] = useState<"about" | "incorrect" | "engine" | "future">("about");
 
   // Rules State
   const [rules, setRules] = useState<{ ips: string[]; apps: string[]; domains: string[] }>({ ips: [], apps: [], domains: [] });
   const [newIp, setNewIp] = useState("");
   const [newApp, setNewApp] = useState("");
   const [newDomain, setNewDomain] = useState("");
+  const [serverStatus, setServerStatus] = useState<"checking" | "waking" | "active" | "offline">("checking");
 
   // Search & Filter State
   const [packetSearch, setPacketSearch] = useState("");
@@ -141,14 +144,54 @@ export default function Dashboard() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
-  // Load backend active rules on mount
+  // Ping backend to wake it up and fetch rules
   useEffect(() => {
-    fetchRules();
+    const wakeAndFetch = async () => {
+      let attempts = 0;
+      const maxAttempts = 6;
+      setServerStatus("checking");
+
+      const checkHealth = async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/health`, { signal: AbortSignal.timeout(5000) });
+          if (res.ok) {
+            setServerStatus("active");
+            fetchRules();
+            return true;
+          }
+        } catch (err) {
+          console.log("Backend not ready yet, retrying...");
+        }
+        return false;
+      };
+
+      // Try instantly
+      const isOk = await checkHealth();
+      if (isOk) return;
+
+      // If failed, show "waking up" status
+      setServerStatus("waking");
+
+      const interval = setInterval(async () => {
+        attempts++;
+        const ready = await checkHealth();
+        if (ready || attempts >= maxAttempts) {
+          clearInterval(interval);
+          if (!ready) {
+            setServerStatus("offline");
+          }
+        }
+      }, 7000); // Check every 7 seconds
+
+      return () => clearInterval(interval);
+    };
+
+    wakeAndFetch();
   }, []);
 
   const fetchRules = async () => {
     try {
-      const res = await fetch("http://localhost:8080/api/rules");
+      const res = await fetch(`${API_BASE_URL}/api/rules`);
       if (res.ok) {
         const data = await res.json();
         setRules(data);
@@ -161,7 +204,7 @@ export default function Dashboard() {
   const handleBlockAction = async (type: "ip" | "app" | "domain", value: string) => {
     if (!value.trim()) return;
     try {
-      const res = await fetch(`http://localhost:8080/api/rules/block-${type}`, {
+      const res = await fetch(`${API_BASE_URL}/api/rules/block-${type}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [type]: value })
@@ -179,7 +222,7 @@ export default function Dashboard() {
 
   const handleClearRules = async () => {
     try {
-      const res = await fetch("http://localhost:8080/api/rules/clear", { method: "POST" });
+      const res = await fetch(`${API_BASE_URL}/api/rules/clear`, { method: "POST" });
       if (res.ok) {
         fetchRules();
       }
@@ -206,7 +249,7 @@ export default function Dashboard() {
     formData.append("file", file);
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "http://localhost:8080/api/analyze");
+    xhr.open("POST", `${API_BASE_URL}/api/analyze`);
 
     // Track upload progress
     xhr.upload.onprogress = (event) => {
@@ -245,7 +288,7 @@ export default function Dashboard() {
     setError(null);
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "http://localhost:8080/api/analyze/sample");
+    xhr.open("POST", `${API_BASE_URL}/api/analyze/sample`);
 
     // Mock progress loading updates for static sample
     const timer = setInterval(() => {
@@ -508,36 +551,64 @@ export default function Dashboard() {
 
       {/* Top Header */}
       <header className="border-b border-slate-900/60 bg-[#080a10]/80 backdrop-blur-xl sticky top-0 z-50 px-6 py-4 flex items-center justify-between shadow-lg shadow-black/10">
-        <div className="flex items-center gap-3">
+        <div 
+          onClick={() => { if(analysis) { setAnalysis(null); setFile(null); } }}
+          className={`flex items-center gap-3 ${analysis ? "cursor-pointer group/logo" : ""}`}
+        >
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-400 to-indigo-500 flex items-center justify-center shadow-lg shadow-cyan-400/25 relative overflow-hidden group">
             <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
             <Activity className="w-5 h-5 text-black" />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-400 via-teal-400 to-indigo-400 bg-clip-text text-transparent flex items-center gap-1">
-              DPI Net-Scope <Sparkles className="w-4 h-4 text-cyan-400" />
+            <h1 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-400 via-teal-400 to-indigo-400 bg-clip-text text-transparent flex items-center gap-1 group-hover/logo:from-cyan-300 group-hover/logo:to-indigo-350 transition-all duration-300">
+              DPI Net-Scope <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
             </h1>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Enterprise DPI Visualization</p>
           </div>
         </div>
 
-        {analysis && (
-          <div className="flex items-center gap-1.5 border border-slate-900/80 rounded-xl p-1 bg-slate-950/80 backdrop-blur-md">
-            {(["overview", "packets", "flows", "graph", "rules", "export"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all duration-300 relative ${
-                  activeTab === tab 
-                    ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-sm" 
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30 border border-transparent"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+        <div className="flex items-center gap-4">
+          {/* Server Connection Status Indicator */}
+          <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-900/80 rounded-xl px-3 py-1.5 backdrop-blur-md">
+            <span className={`w-2 h-2 rounded-full ${
+              serverStatus === "active" ? "bg-emerald-450 shadow-lg shadow-emerald-450/40" :
+              serverStatus === "waking" ? "bg-amber-450 animate-pulse shadow-lg shadow-amber-450/40" :
+              serverStatus === "offline" ? "bg-rose-450 shadow-lg shadow-rose-450/40" :
+              "bg-cyan-450 animate-pulse shadow-lg shadow-cyan-450/40"
+            }`} />
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
+              {serverStatus === "active" && "Backend: Online"}
+              {serverStatus === "waking" && "Backend: Waking up..."}
+              {serverStatus === "offline" && "Backend: Offline"}
+              {serverStatus === "checking" && "Backend: Connecting..."}
+            </span>
           </div>
-        )}
+
+          {analysis && (
+            <div className="flex items-center gap-1.5 border border-slate-900/80 rounded-xl p-1 bg-slate-950/80 backdrop-blur-md">
+              {(["overview", "packets", "flows", "graph", "rules", "export"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all duration-300 relative ${
+                    activeTab === tab 
+                      ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-sm" 
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/30 border border-transparent"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+              <div className="w-[1px] h-4 bg-slate-800 mx-1" />
+              <button
+                onClick={() => { setAnalysis(null); setFile(null); }}
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg text-rose-450 hover:text-rose-450 hover:bg-rose-500/5 border border-transparent transition-all duration-300 flex items-center gap-1"
+              >
+                <Upload className="w-3.5 h-3.5" /> Upload New
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Main Content Area */}
@@ -551,22 +622,48 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }} 
               exit={{ opacity: 0, y: -30 }}
               transition={{ duration: 0.4 }}
-              className="py-16 flex flex-col items-center justify-center max-w-xl mx-auto text-center"
+              className="py-20 flex flex-col items-center justify-center max-w-3xl mx-auto text-center"
             >
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-950/30 to-slate-950/30 border border-cyan-800/40 flex items-center justify-center mb-8 shadow-2xl shadow-cyan-500/5 relative overflow-hidden group">
-                <div className="absolute inset-0 bg-cyan-500/5 blur-xl group-hover:scale-150 transition-transform" />
-                <Network className="w-10 h-10 text-cyan-400" />
+              <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-cyan-950/50 to-indigo-950/50 border border-cyan-700/50 flex items-center justify-center mb-10 shadow-2xl shadow-cyan-500/15 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-cyan-500/10 blur-xl group-hover:scale-150 transition-transform duration-700" />
+                <Network className="w-16 h-16 text-cyan-400" />
               </div>
-              <h2 className="text-4xl font-black tracking-tight mb-4 bg-gradient-to-r from-slate-50 via-slate-100 to-slate-400 bg-clip-text text-transparent">
-                Deep Packet Inspection System
+              <h2 className="text-6xl font-black tracking-tight mb-6 bg-gradient-to-r from-white via-cyan-100 to-slate-400 bg-clip-text text-transparent leading-tight">
+                Deep Packet Inspection
               </h2>
-              <p className="text-slate-400 text-sm mb-10 leading-relaxed font-medium">
-                Upload raw PCAP capture logs to execute stateful deep network tracking, protocol extraction, and custom firewall analysis configurations.
+              <p className="text-slate-300 text-lg mb-12 leading-relaxed font-medium max-w-2xl">
+                Upload a network capture file and instantly see every connection, app, and packet — visualized beautifully in your browser. No Wireshark needed.
               </p>
 
+              {/* Quick Intro Banner */}
+              <div className="w-full bg-cyan-950/20 border border-cyan-500/30 rounded-3xl p-8 mb-10 text-left relative overflow-hidden">
+                <div className="absolute -right-16 -top-16 w-56 h-56 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
+                <h3 className="text-xl font-extrabold text-cyan-400 flex items-center gap-3 mb-4">
+                  <Info className="w-6 h-6" /> What is DPI Net-Scope?
+                </h3>
+                <p className="text-base text-slate-300 leading-relaxed mb-6">
+                  Every time your computer talks to the internet, it sends tiny packets of data — like little envelopes carrying messages. NetScope opens every single one of those envelopes and tells you what's inside: which apps were used, which servers were contacted, and whether anything suspicious happened.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="flex items-start gap-3 bg-slate-900/40 rounded-xl p-4 border border-slate-800/60">
+                    <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                    <span className="text-sm text-slate-300 font-medium">Upload any .pcap capture file from Wireshark</span>
+                  </div>
+                  <div className="flex items-start gap-3 bg-slate-900/40 rounded-xl p-4 border border-slate-800/60">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                    <span className="text-sm text-slate-300 font-medium">Or try the built-in sample file instantly</span>
+                  </div>
+                  <div className="flex items-start gap-3 bg-slate-900/40 rounded-xl p-4 border border-slate-800/60">
+                    <div className="w-2.5 h-2.5 rounded-full bg-violet-400 mt-1.5 shrink-0" />
+                    <span className="text-sm text-slate-300 font-medium">No installation — runs right in your browser</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Upload Drop Zone */}
-              <div className="w-full bg-[#0a0d14]/40 border border-slate-900 backdrop-blur-md hover:border-cyan-500/30 rounded-3xl p-12 transition-all duration-300 group flex flex-col items-center justify-center shadow-2xl shadow-black/20 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500/10 to-transparent" />
+              <div className="w-full bg-[#0a0d14]/60 border-2 border-dashed border-slate-700 hover:border-cyan-500/60 rounded-3xl p-16 transition-all duration-500 group flex flex-col items-center justify-center shadow-2xl shadow-black/40 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-b from-cyan-950/5 to-transparent pointer-events-none" />
                 <input 
                   type="file" 
                   accept=".pcap" 
@@ -577,34 +674,36 @@ export default function Dashboard() {
                 />
                 <label 
                   htmlFor="pcap-uploader" 
-                  className="cursor-pointer flex flex-col items-center gap-4 w-full"
+                  className="cursor-pointer flex flex-col items-center gap-6 w-full"
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-slate-950/80 flex items-center justify-center border border-slate-900 group-hover:border-cyan-500/20 group-hover:bg-slate-900/50 transition-all shadow-inner">
-                    <Upload className="w-6 h-6 text-slate-400 group-hover:text-cyan-400" />
+                  <div className="w-24 h-24 rounded-3xl bg-slate-900/90 flex items-center justify-center border-2 border-slate-700 group-hover:border-cyan-500/50 group-hover:bg-slate-800/60 transition-all duration-300 shadow-2xl">
+                    <Upload className="w-11 h-11 text-slate-500 group-hover:text-cyan-400 transition-colors duration-300" />
                   </div>
-                  <span className="text-sm font-bold text-slate-200">
-                    {file ? file.name : "Select raw PCAP file"}
-                  </span>
-                  <span className="text-xs text-slate-500 font-medium tracking-wide">
-                    Standard PCAP formats supported
-                  </span>
+                  <div className="text-center">
+                    <span className="block text-2xl font-bold text-slate-100 mb-2">
+                      {file ? file.name : "Drop your PCAP file here"}
+                    </span>
+                    <span className="text-base text-slate-500 font-medium">
+                      Click to browse &mdash; .pcap format supported
+                    </span>
+                  </div>
                 </label>
 
                 {file && !uploading && (
                   <button 
                     onClick={triggerAnalysis}
-                    className="mt-8 w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-500 hover:from-cyan-300 hover:to-indigo-400 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-400/25 active:scale-95 transition-all duration-300"
+                    className="mt-10 w-full py-5 rounded-2xl bg-gradient-to-r from-cyan-400 to-indigo-500 hover:from-cyan-300 hover:to-indigo-400 text-black font-extrabold text-base uppercase tracking-widest shadow-xl shadow-cyan-400/30 active:scale-95 transition-all duration-300"
                   >
-                    Start DPI Inspection
+                    ⚡ Start DPI Inspection
                   </button>
                 )}
 
                 {!file && !uploading && (
                   <button 
                     onClick={triggerSampleAnalysis}
-                    className="mt-8 px-6 py-2.5 rounded-xl border border-slate-800 hover:border-slate-700 hover:bg-slate-900/10 text-cyan-400 font-bold text-xs uppercase tracking-wider transition-colors active:scale-95 flex items-center gap-1.5"
+                    className="mt-10 px-10 py-4 rounded-2xl border border-slate-600 hover:border-cyan-400/60 hover:bg-cyan-950/20 text-cyan-400 font-bold text-base tracking-wide transition-all duration-300 active:scale-95 flex items-center gap-3"
                   >
-                    Or Load Sample PCAP
+                    <span>Or Load Sample PCAP</span> <span className="text-slate-500">→</span>
                   </button>
                 )}
 
@@ -624,42 +723,193 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Core Features & Value Proposal */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-12 w-full text-left">
-                <div className="bg-[#0b0e14]/40 border border-slate-900/60 p-5 rounded-2xl relative overflow-hidden group shadow-lg shadow-black/5 before:absolute before:top-0 before:left-0 before:w-full before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/20 before:to-transparent">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-cyan-400" /> Parallel Flow Balancing
-                  </h4>
-                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
-                    Uses consistent hashing on packet IP/port tuples to dispatch frames to dedicated queues, solving multi-threaded ordering issues.
-                  </p>
+              {/* Interactive IDE Spec Console */}
+              <div className="w-full mt-14 text-left bg-[#05070c]/90 border border-slate-800 rounded-2xl shadow-2xl relative overflow-hidden font-mono">
+                {/* IDE Window Header */}
+                <div className="bg-[#090b11] px-5 py-4 border-b border-slate-900/80 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-3.5 h-3.5 rounded-full bg-rose-500/80" />
+                    <div className="w-3.5 h-3.5 rounded-full bg-amber-500/80" />
+                    <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/80" />
+                    <span className="text-xs text-slate-400 font-bold ml-3 uppercase tracking-widest">NetScope — System Specifications</span>
+                  </div>
+                  <div className="text-[10px] bg-slate-950 text-slate-400 px-3 py-1 rounded border border-slate-800 font-bold tracking-wide">
+                    JDK 21 · Next.js 16
+                  </div>
                 </div>
 
-                <div className="bg-[#0b0e14]/40 border border-slate-900/60 p-5 rounded-2xl relative overflow-hidden group shadow-lg shadow-black/5 before:absolute before:top-0 before:left-0 before:w-full before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/20 before:to-transparent">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <Network className="w-4 h-4 text-cyan-400" /> Deep Traffic Profiling
-                  </h4>
-                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
-                    Mines client handshakes to extract TLS Server Name Indications (SNI), DNS lookups, and HTTP headers for instant app identification.
-                  </p>
+                {/* IDE Tabs */}
+                <div className="flex border-b border-slate-900/60 bg-[#07090e] overflow-x-auto scrollbar-none">
+                  {(["about", "engine", "incorrect", "future"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setDocTab(tab)}
+                      className={`flex items-center gap-2 px-4 py-2.5 text-xs border-r border-slate-900 transition-all ${
+                        docTab === tab
+                          ? "bg-[#05070c] text-cyan-400 border-t-2 border-t-cyan-500 font-semibold"
+                          : "text-slate-500 hover:text-slate-350 bg-[#080b10]/40"
+                      }`}
+                    >
+                      {tab === "about" && (
+                        <>
+                          <Info className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>About.md</span>
+                        </>
+                      )}
+                      {tab === "engine" && (
+                        <>
+                          <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Pipeline.java</span>
+                        </>
+                      )}
+                      {tab === "incorrect" && (
+                        <>
+                          <ShieldAlert className="w-3.5 h-3.5 text-rose-450" />
+                          <span>Correctness.java</span>
+                        </>
+                      )}
+                      {tab === "future" && (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Roadmap.json</span>
+                        </>
+                      )}
+                    </button>
+                  ))}
                 </div>
 
-                <div className="bg-[#0b0e14]/40 border border-slate-900/60 p-5 rounded-2xl relative overflow-hidden group shadow-lg shadow-black/5 before:absolute before:top-0 before:left-0 before:w-full before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/20 before:to-transparent">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-cyan-400" /> Firewall Rule Simulator
-                  </h4>
-                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
-                    Apply live block rules for specific IPs, domains, or app signatures to simulate drop profiles without changing code.
-                  </p>
-                </div>
+                {/* IDE Editor Viewport */}
+                <div className="p-6 bg-[#05070c]/50 text-slate-300 min-h-[220px] text-xs leading-relaxed overflow-x-auto">
+                  {docTab === "about" && (
+                    <div className="space-y-4 font-sans text-xs">
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">01</span>
+                        <span className="text-cyan-405 font-bold text-sm"># What is NetScope-DPI?</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">02</span>
+                        <span className="text-slate-300">NetScope translates raw network packet files (.pcap) into visual dashboards. Instead of opening raw data in Wireshark, you upload your file here to see active connections, timeline graphs, and a topological device map in your browser.</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">03</span>
+                        <span className="text-emerald-405 font-bold text-sm"># What does it solve?</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">04</span>
+                        <span className="text-slate-300">It removes single-threaded parsing bottlenecks and heavy desktop setups. It allows team members to share traffic audits, filter payloads, and test simulated firewall blocks instantly.</span>
+                      </div>
+                    </div>
+                  )}
 
-                <div className="bg-[#0b0e14]/40 border border-slate-900/60 p-5 rounded-2xl relative overflow-hidden group shadow-lg shadow-black/5 before:absolute before:top-0 before:left-0 before:w-full before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/20 before:to-transparent">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <Database className="w-4 h-4 text-cyan-400" /> Topological Graphs
-                  </h4>
-                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
-                    Transforms raw packets into an interactive, force-directed node map. Inspect device bandwidth, connection counts, and protocols.
-                  </p>
+                  {docTab === "engine" && (
+                    <div className="space-y-2 font-mono">
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">01</span>
+                        <span className="text-indigo-405">public class</span> <span className="text-slate-200">DPIEngine</span> <span className="text-slate-400">&#123;</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">02</span>
+                        <span className="text-slate-605">  // Multi-threaded processing: We divide packets among multiple CPU cores</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">03</span>
+                        <span className="text-slate-200">  // Consistent Hashing: We hash the packet connection details to ensure</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">04</span>
+                        <span className="text-slate-200">  // that packets from the exact same conversation are sent to the same core</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">05</span>
+                        <span className="text-slate-200">  // This keeps the conversation order correct without slowing down</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">06</span>
+                        <span className="text-slate-400">&#125;</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {docTab === "incorrect" && (
+                    <div className="space-y-4 font-sans text-slate-300 text-xs">
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">01</span>
+                        <span className="text-rose-455 font-bold uppercase tracking-wider font-mono">// CORRECTNESS AND ROBUSTNESS LOGIC</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">02</span>
+                        <span className="text-slate-500 font-mono">/* Dynamic adjustments to handle real-world PCAP files without crashing: */</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">03</span>
+                        <span className="text-amber-400 font-bold">1. Endianness Swapping:</span>
+                        <span className="text-slate-350 font-medium"> Swaps big-endian and little-endian data dynamically to read packet IPs correctly.</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">04</span>
+                        <span className="text-amber-400 font-bold">2. Boundary Protection:</span>
+                        <span className="text-slate-350 font-medium"> Checks packet bounds before reading bytes to prevent buffer out-of-bounds crashes.</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">05</span>
+                        <span className="text-amber-400 font-bold">3. Stateful TCP Checks:</span>
+                        <span className="text-slate-350 font-medium"> Tracks packet flags (SYN/ACK) to map active connections, filtering out malformed traffic.</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {docTab === "future" && (
+                    <div className="space-y-2 font-mono">
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">01</span>
+                        <span className="text-slate-400">&#123;</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">02</span>
+                        <span className="text-slate-200">  </span><span className="text-cyan-400">"active_features"</span><span className="text-slate-400">: [</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">03</span>
+                        <span className="text-slate-200">    </span><span className="text-slate-300">"Multi-threaded packet parsing"</span><span className="text-slate-400">,</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">04</span>
+                        <span className="text-slate-200">    </span><span className="text-slate-300">"TLS & DNS domain identification"</span><span className="text-slate-400">,</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">05</span>
+                        <span className="text-slate-200">    </span><span className="text-slate-300">"Interactive connection topology maps"</span><span className="text-slate-400">,</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">06</span>
+                        <span className="text-slate-200">    </span><span className="text-slate-300">"Dynamic firewall block rules simulator"</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">07</span>
+                        <span className="text-slate-200">  </span><span className="text-slate-400">],</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">08</span>
+                        <span className="text-slate-200">  </span><span className="text-emerald-450">"future_roadmap"</span><span className="text-slate-400">: [</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">09</span>
+                        <span className="text-slate-200">    </span><span className="text-slate-300">"Live socket packet streaming capture"</span><span className="text-slate-400">,</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">10</span>
+                        <span className="text-slate-200">    </span><span className="text-slate-300">"Regex-based Intrusion Detection (IDS)"</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">11</span>
+                        <span className="text-slate-200">  </span><span className="text-slate-400">]</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 select-none mr-4">12</span>
+                        <span className="text-slate-400">&#125;</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
