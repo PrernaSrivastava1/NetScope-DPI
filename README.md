@@ -1,16 +1,14 @@
 # NetScope-DPI: High-Throughput Deep Packet Inspection System
 
-A fully functional, web-based network traffic analysis engine. This project parses raw `.pcap` packet captures, reconstructs stateful connections (flow tracking), uses deep packet inspection to identify application protocols (such as TLS SNI and DNS queries), and provides an interactive visual dashboard for analyzing network states.
+A web-based network traffic analysis engine. This project parses raw binary `.pcap` packet captures, reconstructs stateful connections (flow tracking), uses deep packet inspection to identify application protocols (such as TLS SNI and DNS queries), and provides an interactive visual dashboard for analyzing network states.
 
 **Live Production URL**: [https://frontend-tan-eta-66.vercel.app](https://frontend-tan-eta-66.vercel.app)
 
 ---
 
-## 🛠️ The Architecture & How It Works
+## 🛠️ System Architecture & Execution Pipeline
 
-Instead of relying on heavy desktop tools (like Wireshark) or simple single-threaded scripts, NetScope uses a **multi-threaded, load-balanced pipelines** architecture designed in Java to handle packet capture analysis.
-
-Here is the exact data lifecycle when you upload a PCAP file:
+Instead of relying on heavy desktop tools or simple single-threaded scripts, NetScope uses a **multi-threaded, load-balanced pipeline** architecture designed in Java to handle packet capture analysis efficiently.
 
 ```mermaid
 graph TD
@@ -25,48 +23,33 @@ graph TD
 ```
 
 ### 1. Multi-Threaded Load Balancing
-*   **The Reader Thread (`PcapReader`)**: Sequentially reads the binary PCAP format from disk, extracts raw packet buffers, and feeds them into the load balancer pipeline.
-*   **Load Balancing (`LBManager`)**: Network connections must be processed in order to track state. To do this multi-threaded, we use **Consistent Hashing** over the packet's **5-Tuple** (Source IP, Destination IP, Source Port, Destination Port, Protocol).
-*   **Consistent Hashing (`ConsistentHash`)**: By hashing the 5-Tuple (reversing source/destination fields for symmetry), we guarantee that all packets belonging to the same connection flow (both upstream and downstream) land in the **exact same worker queue**. This prevents race conditions and preserves packet ordering without needing complex thread locks.
+*   **Sequential Reader (`PcapReader`)**: Sequentially parses the binary PCAP format from disk, extracts raw packet buffers, and submits them to the load-balancing layer.
+*   **Consistent Hashing (`ConsistentHash` / `LBManager`)**: Network connections must be processed in order to track state. To do this multi-threaded without thread contention, we use **Consistent Hashing** over the packet's **5-Tuple** (Source IP, Destination IP, Source Port, Destination Port, Protocol).
+*   **Symmetric Routing**: By sorting the source and destination fields within the hash calculation, we guarantee that all packets belonging to the same connection flow (both upstream and downstream) land in the **exact same worker queue**. This prevents race conditions, preserves packet ordering, and allows isolated processing without thread locks.
 *   **Flow Processors (`FPManager`)**: A pool of dedicated worker threads pull packets from their specific queues. Each thread manages its own `ConnectionTracker` to reconstruct TCP streams and analyze payload contents.
 
-### 2. Deep Packet Inspection (DPI) & Signature Matching
+### 2. Deep Packet Inspection (DPI) & Protocol Sniffing
 Once a packet is routed to a worker thread:
-*   **L2-L4 Parsing (`PacketParser`)**: Extracts Ethernet MAC addresses, IPv4/IPv6 headers, and transport protocol structures (TCP/UDP).
+*   **L2-L4 Parsing (`PacketParser`)**: Decodes Ethernet MAC addresses, IPv4/IPv6 headers, and transport protocol structures (TCP/UDP).
 *   **DNS Inspection**: Extracts DNS request domains by parsing UDP payload byte structures.
-*   **TLS SNI (Server Name Indication) Parsing**: For secure HTTPS connections, the parser reads the TLS Client Hello handshake frame, parses the extension structures, and extracts the plain-text server domain.
+*   **TLS SNI (Server Name Indication) Parsing**: For secure HTTPS connections, the parser inspects the unencrypted **TLS Client Hello** handshake packet. By parsing the TLS extensions, it extracts the plain-text server domain before encryption starts, allowing us to identify the target server without decrypting the payload.
 *   **Application Signature Engine**: Maps domains and protocols to high-level applications (e.g. YouTube, Zoom, Discord, TikTok, Spotify) by matching signatures against the extracted hostnames.
 
-### 3. Stateful Connection Tracking
-We track active flows by monitoring connection states (e.g., matching TCP handshake SYN/ACK packets, connection timeouts, and teardown FIN/RST sequences). This allows us to calculate metrics like duration, total bytes sent, packet counts, and latency for every individual flow.
+### 3. Stateful Connection Tracking & Rule Filtering
+*   **State Reconstruction**: Active flows are tracked by monitoring connection states (e.g., matching TCP handshake SYN/ACK packets, connection timeouts, and teardown FIN/RST sequences).
+*   **Edge Cases (Out-of-Order Packets)**: The `ConnectionTracker` verifies TCP sequence numbers to correctly position packets in the byte stream, resolving delivery issues before payload analysis.
+*   **Rule Engine**: A `RuleManager` holds active block rules for specific IPs, applications, or domains. Packets matching these rules are designated as `DROP` (simulating a firewall action), updating the drop rate and active counts displayed on the dashboard.
 
 ---
 
-## 💻 Tech Stack & Deployment Strategy
+## 💻 Tech Stack & Production Deployment
 
 *   **Frontend**: Next.js 16 (Turbopack compiler), TypeScript, Tailwind CSS, Recharts (for timeline & protocol distribution), Canvas API (for force-directed topology graphs).
 *   **Backend**: Java 21, Spring Boot 3, Maven.
+*   **Backend Framework Rationale**: Java was selected over single-threaded runtimes (like Node.js) or runtime-locked environments (like Python's GIL) because packet parsing is highly CPU-bound. Java provides robust concurrency primitives (such as `ArrayBlockingQueue`) and native-level execution speed via JIT compilation.
 *   **CI/CD & Hosting**:
     *   **Frontend**: Deployed on **Vercel** with a root `vercel.json` monorepo configuration directing build actions to the `frontend` subfolder.
     *   **Backend**: Deployed as a **Docker** container on **Render** (via `java-packet-analyzer/Dockerfile`), running a multi-stage build that compiles the Maven target inside a light Eclipse Temurin Alpine image.
-
----
-
-## 🎯 Interview Deep-Dive: Questions & Edge Cases
-
-If you are explaining this project in an interview, be prepared to answer these engineering questions:
-
-### Q1: Why Java for the backend instead of Node.js or Python?
-*   **Answer**: Packet parsing is CPU-bound. Java offers superior multithreading capabilities, efficient concurrency primitives (like `ArrayBlockingQueue`), and native-level speed through JIT compilation. A single-threaded Node.js engine would lock up the main thread parsing large binary files, and Python is too slow due to the Global Interpreter Lock (GIL).
-
-### Q2: What happens if packet delivery is out of order?
-*   **Answer**: That is why we use **Consistent Hashing** over the 5-tuple. Because packets for a specific connection are routed to the *same* thread's queue, they are processed in the order they were written to the PCAP file. For stream validation, our `ConnectionTracker` checks TCP sequence numbers to map packets to the correct place in the byte stream.
-
-### Q3: How do you perform DPI on encrypted (HTTPS) traffic?
-*   **Answer**: We do not decrypt the payload (which would require installing certificates). Instead, we parse the unencrypted **TLS Client Hello** handshake packet. The client must state the domain name it wants to connect to in the **Server Name Indication (SNI)** extension of the handshake. We read these specific bytes to identify the destination application.
-
-### Q4: How does the Rule Engine work on live traffic?
-*   **Answer**: The backend contains a `RuleManager` that holds lists of blocked IPs, applications, or domains. When parsing a packet, the engine matches the packet's fields against the active rules. If a match occurs, the action is marked as `DROP`, simulating a real-time firewall rule, and the UI displays the dropped packet counts.
 
 ---
 
