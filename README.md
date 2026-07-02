@@ -6,9 +6,9 @@ NetScope-DPI is an open-source, high-throughput network analysis engine and visu
 
 ---
 
-## 📖 The Story Behind This Project
+## This Project
 
-### Why this project exists
+### About
 When computers communicate over a network, they break down information into tiny chunks called **packets**. To diagnose connection issues, analyze security threats, or optimize bandwidth, engineers record these packets into binary files called **Packet Captures (PCAPs)** using command-line sniffers like `tcpdump` or graphical analyzers like `Wireshark`. 
 
 However, reading raw PCAP binary files is incredibly difficult. While desktop applications like Wireshark are excellent, they are:
@@ -16,14 +16,14 @@ However, reading raw PCAP binary files is incredibly difficult. While desktop ap
 2.  **Isolated**: Sharing a complex packet analysis session requires sending massive binary files back and forth.
 3.  **Complex**: Non-networking developers or recruiters cannot easily navigate Wireshark's dense interface.
 
-### The Inspiration
+### Inspiration
 NetScope was inspired by the need for a web-based, zero-installation alternative that makes deep packet analysis accessible to everyone. By combining a highly parallelized, multithreaded Java parsing backend with a clean React-based Next.js frontend, NetScope takes raw packet captures, processes them concurrently, and displays them as visual graphs, charts, and interactive connection nodes that anyone can understand instantly.
 
 ---
 
-## 🎯 Problem Statement & Impact
+## Problem Statement & Impact
 
-### The Problem
+### Problem
 Traditional packet analysis tools treat PCAP files sequentially. When a file contains hundreds of megabytes of raw bytes, a single thread reading the packets one by one becomes a performance bottleneck. Furthermore, modern web traffic is encrypted under SSL/TLS (Secure Sockets Layer / Transport Layer Security). Standard packet parsers see nothing but encrypted, random-looking data, making it impossible to determine which applications (like YouTube, Zoom, or Discord) are consuming network resources.
 
 ### Why Solving It Matters
@@ -33,7 +33,7 @@ Traditional packet analysis tools treat PCAP files sequentially. When a file con
 
 ---
 
-## 🏢 Real-World Applications & Target Audience
+##  Real-World Applications 
 
 *   **Security Analysts (SOC / Forensics)**: Quick metadata auditing of small-to-medium capture dumps to inspect packet headers and track network anomalies.
 *   **Systems & Network Engineers**: Teaching tool for demonstrating stream assembly, protocol headers, and load-balancer thread distribution.
@@ -42,14 +42,14 @@ Traditional packet analysis tools treat PCAP files sequentially. When a file con
 
 ---
 
-## 📋 Project Goals
+## Goals
 *   **Primary Goal**: Reconstruct connection states (flows) from raw binary packet streams concurrently.
 *   **Secondary Goals**: Inspect TLS client handshakes (SNI sniffing) and DNS structures to categorize encrypted traffic without payload decryption.
 *   **Long-Term Vision**: Evolve into a lightweight, containerized sidecar dashboard for live network auditing in Kubernetes environments.
 
 ---
 
-## 🛠️ System Architecture
+## System Architecture
 
 NetScope utilizes a **pipeline design** built for CPU-bound binary processing.
 
@@ -75,7 +75,7 @@ graph TD
 
 ---
 
-## 📂 Folder Structure
+## Folder Structure
 
 ```
 NetScope-DPI/
@@ -107,7 +107,7 @@ NetScope-DPI/
 
 ---
 
-## 💻 Technology Stack & Rationale
+## Technology Stack & Rationale
 
 | Tech | Rationale | Alternatives | Advantages | Disadvantages | Role inside NetScope |
 |---|---|---|---|---|---|
@@ -119,7 +119,7 @@ NetScope-DPI/
 
 ---
 
-## 📦 Dependency Breakdown
+## Dependency Breakdown
 
 ### Backend Dependencies (`pom.xml`)
 *   `spring-boot-starter-web`: Pulls in the embedded Tomcat server and REST controller mappings. *(If removed, we cannot expose HTTP APIs).*
@@ -132,7 +132,7 @@ NetScope-DPI/
 
 ---
 
-## 🔄 Data Lifecycle & Flow
+## Data Lifecycle & Flow
 
 ```
 Raw PCAP File -> Binary Stream -> Header Validation (Endian check) -> Packet Extraction 
@@ -166,7 +166,7 @@ To identify the application in encrypted streams:
 
 ---
 
-## 🎯 Security, Network & Cybersecurity Foundations
+## Security, Network & Cybersecurity Foundations
 
 *   **Packet Capture (PCAP)**: A standard file format that records raw data packets traveling over a network interface.
 *   **5-Tuple**: The identifying set of network headers: `Source IP Address, Destination IP Address, Source Port, Destination Port, Protocol`. It uniquely identifies a TCP or UDP conversation.
@@ -176,7 +176,7 @@ To identify the application in encrypted streams:
 
 ---
 
-## 🚀 Running Locally & Deploying
+## Running Locally & Deploying
 
 Detailed steps for setting up local runs and deploying to platforms like Vercel and Render are fully documented in the project's documentation folder:
 *   [deployment.md](file:///c:/Users/HP/PA-NET-SCOPE/Packet_analyzer/docs/deployment.md) - Contains complete step-by-step local running instructions and production deployment configurations.
@@ -185,12 +185,4 @@ Detailed steps for setting up local runs and deploying to platforms like Vercel 
 
 ---
 
-## 📚 Interview Preparation (100 Questions)
-
-To prepare for technical interviews, placements, and systems-design discussions, read the comprehensive **[Interview Preparation Knowledge Base (docs/interview_prep.md)](file:///c:/Users/HP/PA-NET-SCOPE/Packet_analyzer/docs/interview_prep.md)**. 
-
-It contains **100 deep-dive engineering questions and answers** covering Java Concurrency, System Design, Networking Protocols, and Security concepts specifically mapped to NetScope's codebase.
-
----
-
-Prerna Srivastava · [github.com/PrernaSrivastava1](https://github.com/PrernaSrivastava1) · prerna7105@gmail.com
+prerna7105@gmail.com
