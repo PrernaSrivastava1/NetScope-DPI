@@ -152,6 +152,15 @@ public class DPIController {
         return ResponseEntity.ok(rules);
     }
 
+    @GetMapping("/health")
+    public ResponseEntity<?> healthCheck() {
+        Map<String, String> status = new HashMap<>();
+        status.put("status", "UP");
+        status.put("engine", "NetScope DPI Stateful Core");
+        status.put("version", "1.0.0");
+        return ResponseEntity.ok(status);
+    }
+
     @PostMapping("/rules/block-ip")
     public ResponseEntity<?> blockIp(@RequestBody Map<String, String> body) {
         String ip = body.get("ip");
